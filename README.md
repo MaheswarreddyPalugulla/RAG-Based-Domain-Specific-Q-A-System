@@ -43,8 +43,8 @@ Follow these steps to set up and run the project locally.
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
-cd Gen-AI-With-Deep-Seek-R1
+git clone https://github.com/MaheswarreddyPalugulla/RAG-Based-Domain-Specific-Q-A-System.git
+cd RAG-Based-Domain-Specific-Q-A-System
 ```
 
 ### 2. Install and Set Up Ollama
@@ -54,7 +54,7 @@ cd Gen-AI-With-Deep-Seek-R1
 
   ```bash
   ollama pull deepseek-r1:1.5b
-  ollama pull llama3:8b
+  ollama pull llama3.2:1b
   ```
 
 ### 3. Install Python Dependencies
