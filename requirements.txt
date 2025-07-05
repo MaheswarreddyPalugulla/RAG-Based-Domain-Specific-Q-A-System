@@ -3,3 +3,9 @@ langchain_core
 langchain_community
 langchain_ollama
 pdfplumber
+langchain-huggingface
+sentence-transformers
+torch
+transformers
+langchain-chroma
+chromadb
