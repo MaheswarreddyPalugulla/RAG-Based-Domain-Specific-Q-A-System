@@ -25,7 +25,8 @@ PROMPT_TEMPLATE = """You are an expert document analyst. Answer the user's query
 Instructions:
 - Answer concisely and directly.
 - Do not include your thought process.
-- If the information is not in the context, state that clearly.
+- If the information is not in the context, respond with EXACTLY: "I cannot answer this question based on the document content."
+- Do NOT use your general knowledge to answer questions outside of the provided context.
 
 Query: {user_query}
 Context: {document_context}
@@ -172,11 +173,23 @@ def generate_answer(user_query, relevant_docs, model_name):
             yield "❌ LLM model not available. Please check if Ollama is running and the selected model is installed."
         return error_stream()
     
+    # If there are no relevant docs or the content is too limited, don't use the LLM
+    if not relevant_docs:
+        def not_found_stream():
+            yield "I cannot answer this question based on the document content."
+        return not_found_stream()
+    
     # Create a prompt using the template
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     
     # Format the context from the documents
     document_context = "\n\n---\n\n".join([doc.page_content for doc in relevant_docs])
+    
+    # Check if the retrieved content is substantial enough (min 20 characters)
+    if len(document_context.strip()) < 20:
+        def insufficient_stream():
+            yield "I cannot answer this question based on the document content."
+        return insufficient_stream()
     
     # Create the final prompt
     final_prompt = prompt_template.format(
@@ -282,19 +295,21 @@ if st.session_state.doc_processed:
             with st.spinner("Thinking..."):
                 relevant_docs = find_related_documents(prompt)
                 
-                if not relevant_docs:
-                    response = "I couldn't find relevant information in the document to answer your question."
-                    st.warning(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                else:
-                    # Display source documents for transparency
+                # Display source documents for transparency if any were found
+                if relevant_docs:
                     with st.expander("🔍 View Retrieved Context"):
                         for i, doc in enumerate(relevant_docs):
                             st.info(f"**Source {i+1}:**\n{doc.page_content}")
-                    
-                    # Use st.write_stream to display the streaming response
-                    answer_stream = generate_answer(prompt, relevant_docs, st.session_state.llm_model)
-                    full_answer = st.write_stream(answer_stream)
-                    
-                    # Add the complete assistant response to chat history
-                    st.session_state.messages.append({"role": "assistant", "content": full_answer})
+                
+                # Always use generate_answer - it will now handle empty documents appropriately
+                answer_stream = generate_answer(prompt, relevant_docs, st.session_state.llm_model)
+                
+                # If no documents were found, display a warning style for the message
+                if not relevant_docs:
+                    st.warning("No relevant information found in the document.")
+                
+                # Use st.write_stream to display the streaming response
+                full_answer = st.write_stream(answer_stream)
+                
+                # Add the complete assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": full_answer})
