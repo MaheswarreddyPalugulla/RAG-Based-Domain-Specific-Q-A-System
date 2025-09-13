@@ -143,21 +143,32 @@ def index_documents(document_chunks):
         st.session_state.doc_processed = False
         return False
 
-def find_related_documents(query):
-    """Enhanced search that uses the vector DB from session state and removes duplicates."""
+def find_related_documents(query, similarity_threshold=0.25):
+    """Enhanced search that uses the vector DB from session state and removes duplicates.
+    
+    Args:
+        query: The user's query to search for
+        similarity_threshold: Minimum similarity score (0-1) required to consider a document relevant
+    """
     try:
         if st.session_state.vector_db:
-            results = st.session_state.vector_db.similarity_search(query, k=5)
+            # Use similarity_search_with_score to get both documents and scores
+            results = st.session_state.vector_db.similarity_search_with_score(query, k=5)
 
-            # De-duplicate results based on page_content
-            unique_docs = []
+            # Filter results based on similarity threshold
+            filtered_results = []
             seen_content = set()
-            for doc in results:
-                if doc.page_content not in seen_content:
-                    unique_docs.append(doc)
+            
+            for doc, score in results:
+                # Chromadb returns distance, not similarity, so convert (1.0 = exact match, higher numbers = less similar)
+                # Most embedding distances are in the range of 0-2, where 0 is perfect match
+                similarity = 1.0 - (score / 2.0)  # Convert to 0-1 range where 1 is perfect match
+                
+                if similarity >= similarity_threshold and doc.page_content not in seen_content:
+                    filtered_results.append(doc)
                     seen_content.add(doc.page_content)
             
-            return unique_docs
+            return filtered_results
         else:
             return []
             
@@ -166,7 +177,11 @@ def find_related_documents(query):
         return []
 
 def generate_answer(user_query, relevant_docs, model_name):
-    """Generate a streaming answer using the LLM and context"""
+    """Generate a streaming answer using the LLM and context
+    
+    Only documents meeting the similarity threshold will be in relevant_docs.
+    If no documents meet the threshold, a standard "cannot answer" response is returned.
+    """
     language_model = get_llm(model_name)
     if language_model is None:
         def error_stream():
@@ -225,6 +240,19 @@ with st.sidebar:
             ("deepseek-r1:1.5b", "llama3.2:1b"),
             index=0 if st.session_state.llm_model == "deepseek-r1:1.5b" else 1,
             help="Select the language model for generating answers."
+        )
+        
+        # Add similarity threshold slider
+        if 'similarity_threshold' not in st.session_state:
+            st.session_state.similarity_threshold = 0.25
+            
+        st.session_state.similarity_threshold = st.slider(
+            "Relevance threshold",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.similarity_threshold,
+            step=0.05,
+            help="Minimum similarity score required to consider a document relevant. Higher values mean stricter matching."
         )
 
     with st.expander("🛠️ System Status", expanded=True):
@@ -293,7 +321,11 @@ if st.session_state.doc_processed:
         # Generate and display assistant response
         with st.chat_message("assistant", avatar='🤖'):
             with st.spinner("Thinking..."):
-                relevant_docs = find_related_documents(prompt)
+                # Use the current similarity threshold from session state
+                relevant_docs = find_related_documents(
+                    prompt, 
+                    similarity_threshold=st.session_state.similarity_threshold
+                )
                 
                 # Display source documents for transparency if any were found
                 if relevant_docs:
@@ -306,7 +338,7 @@ if st.session_state.doc_processed:
                 
                 # If no documents were found, display a warning style for the message
                 if not relevant_docs:
-                    st.warning("No relevant information found in the document.")
+                    st.warning(f"No information found in the document that meets the relevance threshold ({st.session_state.similarity_threshold:.2f}). Try adjusting the threshold in the sidebar.")
                 
                 # Use st.write_stream to display the streaming response
                 full_answer = st.write_stream(answer_stream)
