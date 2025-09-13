@@ -120,11 +120,6 @@ def chunk_documents(raw_documents):
     )
     chunks = text_processor.split_documents(raw_documents)
     
-    # Limit the number of chunks to avoid long processing times
-    if len(chunks) > 100:
-        st.warning(f"⚠️ Document has {len(chunks)} chunks. Using first 100 for faster processing.")
-        chunks = chunks[:100]
-    
     return chunks
 
 def index_documents(document_chunks):
